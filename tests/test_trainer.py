@@ -1,6 +1,8 @@
+from pathlib import Path
+
 import pytest
 import torch as t
-from pathlib import Path
+
 from crosscoder_lens.model import CrossCoder, CrossCoderConfig
 from crosscoder_lens.trainer import CrossCoderTrainer
 

@@ -1,16 +1,61 @@
+from pathlib import Path
+from typing import Any
+
 import pytest
 import torch as t
+from sae_lens.config import LanguageModelSAERunnerConfig
+
 from crosscoder_lens.model import CrossCoder, CrossCoderConfig
 
 
-@pytest.fixture
-def config():
-    return CrossCoderConfig(d_in=8, d_sae=4, n_models=3, l1_coeff=0.1, device="cpu")
+def build_sae_runner_cfg(dump_dir: Path, **kwargs: Any) -> LanguageModelSAERunnerConfig:
+    """
+    Helper to create a mock instance of LanguageModelSAERunnerConfig.
+    """
+    mock_config_dict = {
+        "use_cached_activations": True,
+        "cached_activations_path": str(dump_dir / "activations"),
+        "hook_name": "blocks.0.hook_mlp_out",
+        "hook_layer": 0,
+        "d_in": 64,
+        "l1_coefficient": 2e-3,
+        "lp_norm": 1,
+        "lr": 2e-4,
+        "training_tokens": 1_000_000,
+        "train_batch_size_tokens": 4,
+        "feature_sampling_window": 50,
+        "dead_feature_threshold": 1e-7,
+        "dead_feature_window": 1000,
+        "store_batch_size_prompts": 4,
+        "log_to_wandb": False,
+        "wandb_project": "test_project",
+        "wandb_entity": "test_entity",
+        "wandb_log_frequency": 10,
+        "device": "cpu",
+        "seed": 24,
+        "checkpoint_path": str(dump_dir / "checkpoints"),
+        "dtype": "float32",
+        "prepend_bos": True,
+    }
+    mock_config_dict.update(kwargs)
+    mock_config = LanguageModelSAERunnerConfig(**mock_config_dict)
+    return mock_config
 
 
 @pytest.fixture
-def model(config):
-    return CrossCoder(config)
+def sae_runner_cfg(tmp_path: Path):
+    cfg = build_sae_runner_cfg(
+        tmp_path,
+        d_in=64,
+        d_sae=128,
+        hook_layer=0,
+    )
+    return cfg
+
+
+@pytest.fixture
+def model(sae_runner_cfg):
+    return CrossCoder(sae_runner_cfg)
 
 
 def test_crosscoder_init(model, config):

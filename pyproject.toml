@@ -13,7 +13,7 @@ dependencies = [
     "transformers>=4.46.3",
     "wandb>=0.18.7",
     "sae-lens @ git+ssh://git@github.com/tom-pollak/SAELens.git@dev/crosscoders",
-
+    "tiny-dashboard>=0.2.1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -61,4 +61,5 @@ ignore = [
     "F722",  # syntax error in forward annotation
     "E731",  # do not assign a lambda expression
     "E402",  # module level import not at top of file
+    "B905",  # zip with strict=False
 ]

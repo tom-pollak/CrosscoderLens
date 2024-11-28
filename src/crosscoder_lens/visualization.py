@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional, Tuple
-
 import torch as t
 from tiny_dashboard.feature_centric_dashboards import OfflineFeatureCentricDashboard
 from transformers import PreTrainedTokenizer
@@ -23,8 +21,8 @@ class CrossCoderVisualizer:
         self.top_k = top_k
 
     def get_max_activation_examples(
-        self, texts: List[str]
-    ) -> Dict[int, List[Tuple[float, List[str], List[float]]]]:
+        self, texts: list[str]
+    ) -> dict[int, list[tuple[float, list[str], list[float]]]]:
         """Get examples of maximum activations for each feature"""
         max_activation_examples = {}
 
@@ -36,7 +34,10 @@ class CrossCoderVisualizer:
             for feature_idx in range(self.model.config.dict_size):
                 examples = []
 
-                for text_idx, (text, tokens) in enumerate(zip(texts, tokenized)):
+                for text_idx, (text, tokens) in enumerate(
+                    zip(texts, tokenized, strict=False)
+                ):
+                    print(f"Processing text {text_idx} of {len(texts)}")
                     # Get activations
                     input_ids = self.tokenizer.encode(text, return_tensors="pt").to(
                         self.model.config.device
@@ -66,9 +67,9 @@ class CrossCoderVisualizer:
 
     def create_dashboard(
         self,
-        texts: List[str],
-        export_path: Optional[str] = None,
-        max_features: Optional[int] = None,
+        texts: list[str],
+        export_path: str | None = None,
+        max_features: int | None = None,
     ) -> OfflineFeatureCentricDashboard:
         """Create and optionally export a dashboard for the model"""
         max_activation_examples = self.get_max_activation_examples(texts)

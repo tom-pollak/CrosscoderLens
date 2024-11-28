@@ -1,14 +1,25 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import einops
 import torch as t
 from jaxtyping import Float
 from sae_lens.training.training_sae import TrainingSAE, TrainingSAEConfig
 
+from .trainer import CrossCoderTrainerConfig
+
 
 @dataclass(kw_only=True)
 class CrossCoderConfig(TrainingSAEConfig):
     n_models: int  # Number of models to compare
+
+    def __post_init__(self):
+        assert (
+            self.architecture == "standard"
+        ), "CrossCoder only supports standard architecture"
+
+    @classmethod
+    def from_sae_runner_config(cls, cfg: CrossCoderTrainerConfig) -> "CrossCoderConfig":
+        return cls(n_models=cfg.n_models, **asdict(super().from_sae_runner_config(cfg)))
 
 
 class CrossCoder(TrainingSAE):
@@ -19,48 +30,40 @@ class CrossCoder(TrainingSAE):
 
     def __init__(self, config: CrossCoderConfig):
         super().__init__(config)
-        self.config = config
+        self.encode = self.encode_crosscoder
 
-        # Replace single decoder with multi-model decoder
-        del self.W_dec  # Remove parent's decoder
-        self.W_dec = t.nn.Parameter(
-            t.randn(
-                config.n_models,
-                config.d_sae,
-                config.d_in,
-                device=config.device,
-                dtype=t.float32,
+    def encode_crosscoder(
+        self, x: Float[t.Tensor, "batch model d_in"]
+    ) -> Float[t.Tensor, "batch model d_sae"]:
+        sae_in = self.process_sae_in(x)
+        hidden_pre = self.hook_sae_acts_pre(
+            einops.einsum(
+                sae_in,
+                self.W_enc,
+                "batch n_models d_model, n_models d_model d_hidden -> batch d_hidden",
             )
-            * config.init_scale
+            + self.b_enc
         )
+        feature_acts = self.hook_sae_acts_post(self.activation_fn(hidden_pre))
+        return feature_acts
 
     def decode(
-        self, sae_out: Float[t.Tensor, "... d_sae"], model_idx: int | None = None
-    ) -> Float[t.Tensor, "... d_in"]:
-        """Decode from feature space back to activation space"""
-        if model_idx is not None:
-            return sae_out @ self.W_dec[model_idx]
-
-        # Decode for all models
-        # sae_out: [batch, d_sae]
-        # W_dec: [n_models, d_sae, d_in]
-        # returns: [n_models, batch, d_in]
-        return einops.einsum(
-            sae_out, self.W_dec, "... d_sae, n d_sae d_in -> n ... d_in"
+        self, feature_acts: Float[t.Tensor, "batch d_sae"]
+    ) -> Float[t.Tensor, "batch model d_in"]:
+        sae_out = self.hook_sae_recons(
+            einops.einsum(
+                self.apply_finetuning_scaling_factor(feature_acts),
+                self.W_dec,
+                "batch d_sae, d_sae model d_in -> batch model d_in",
+            )
+            + self.b_dec
         )
 
-    def forward(
-        self, x: Float[t.Tensor, "... d_in"], model_idx: int | None = None
-    ) -> Float[t.Tensor, "... d_in"]:
-        """Full forward pass: encode then decode"""
-        sae_out = self.encode(x)
-        return self.decode(sae_out, model_idx)
+        # handle run time activation normalization if needed
+        # will fail if you call this twice without calling encode in between.
+        sae_out = self.run_time_activation_norm_fn_out(sae_out)
 
-    def encode_with_hidden_pre(
-        self, x: Float[t.Tensor, "... d_in"]
-    ) -> tuple[Float[t.Tensor, "... d_sae"], Float[t.Tensor, "... d_sae"]]:
-        """Get both encoder output and pre-activation values"""
-        sae_in = self.process_sae_in(x)
-        hidden_pre = sae_in @ self.W_enc + self.b_enc
-        sae_out = self.nonlinearity(hidden_pre)
-        return sae_out, hidden_pre
+        # handle hook z reshaping if needed.
+        sae_out = self.reshape_fn_out(sae_out, self.d_head)  # type: ignore
+
+        return sae_out
