@@ -63,3 +63,9 @@ ignore = [
     "E402",  # module level import not at top of file
     "B905",  # zip with strict=False
 ]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "jupyter>=1.1.1",
+]
